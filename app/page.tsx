@@ -2,129 +2,53 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-type SetLog = { reps: string; rir: string; quality: number };
-type Exercise = { id: string; name: string; variation: string; sets: SetLog[]; notes: string };
+type Pattern = "push" | "pull" | "legs";
+type Exercise = { name: string; pattern: Pattern };
+type SetLog = { id: string; date: string; exercise: string; pattern: Pattern; reps: string; notes: string };
 
-const freshSet = (): SetLog => ({ reps: "", rir: "2", quality: 4 });
-
-const starterExercises = (): Exercise[] => [
-  { id: "push", name: "Push", variation: "Push-up", sets: [freshSet(), freshSet()], notes: "" },
-  { id: "pull", name: "Pull", variation: "Pull-up / row", sets: [freshSet(), freshSet()], notes: "" },
-  { id: "squat", name: "Squat", variation: "Bodyweight squat", sets: [freshSet(), freshSet()], notes: "" },
-  { id: "hinge", name: "Hinge / core", variation: "Hip hinge or trunk work", sets: [freshSet()], notes: "" },
+const exercises: Exercise[] = [
+  { name: "Push-up", pattern: "push" }, { name: "Diamond push-up", pattern: "push" }, { name: "Deficit push-up", pattern: "push" }, { name: "Incline push-up", pattern: "push" }, { name: "Ring push-up", pattern: "push" }, { name: "Weighted push-up", pattern: "push" },
+  { name: "Pull-up", pattern: "pull" }, { name: "Chin-up", pattern: "pull" }, { name: "Wide pull-up", pattern: "pull" }, { name: "Ring row", pattern: "pull" }, { name: "Inverted row", pattern: "pull" },
+  { name: "Split squat", pattern: "legs" }, { name: "Bulgarian split squat", pattern: "legs" }, { name: "Squat", pattern: "legs" }, { name: "Walking lunge", pattern: "legs" }, { name: "Weighted split squat", pattern: "legs" },
 ];
-
+const patternNames: Record<Pattern, string> = { push: "Push", pull: "Pull", legs: "Legs" };
 const today = new Date().toISOString().slice(0, 10);
+const weekStart = (value: string) => { const d = new Date(`${value}T12:00:00`); d.setDate(d.getDate() - d.getDay()); return d.toISOString().slice(0, 10); };
+const formatDate = (value: string) => new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 
 export default function Home() {
   const [date, setDate] = useState(today);
-  const [structure, setStructure] = useState("Practice sets");
-  const [readiness, setReadiness] = useState(4);
-  const [exercises, setExercises] = useState<Exercise[]>(starterExercises);
-  const [sessionNote, setSessionNote] = useState("");
-  const [saved, setSaved] = useState<Record<string, { exercises: Exercise[]; structure: string; readiness: number; note: string }>>({});
+  const [logs, setLogs] = useState<SetLog[]>([]);
+  const [darkMode, setDarkMode] = useState(false);
+  const [exercise, setExercise] = useState(exercises[0].name);
+  const [reps, setReps] = useState([""]);
+  const [notes, setNotes] = useState("");
 
   useEffect(() => {
-    const stored = localStorage.getItem("kboges-tracker");
-    if (stored) setSaved(JSON.parse(stored));
+    const saved = localStorage.getItem("kboges-set-log");
+    if (saved) setLogs(JSON.parse(saved));
+    setDarkMode(document.documentElement.dataset.theme === "dark");
   }, []);
+  useEffect(() => { document.documentElement.dataset.theme = darkMode ? "dark" : "light"; }, [darkMode]);
+  const saveLogs = (next: SetLog[]) => { setLogs(next); localStorage.setItem("kboges-set-log", JSON.stringify(next)); };
+  const selected = exercises.find((item) => item.name === exercise) ?? exercises[0];
+  const start = weekStart(date);
+  const totals = useMemo(() => logs.filter((entry) => entry.date >= start && entry.date <= new Date(new Date(`${start}T12:00:00`).getTime() + 6 * 86400000).toISOString().slice(0, 10)).reduce<Record<Pattern, number>>((sum, entry) => { sum[entry.pattern] += 1; return sum; }, { push: 0, pull: 0, legs: 0 }), [logs, start]);
+  const todayLogs = logs.filter((entry) => entry.date === date);
+  const groupedHistory = useMemo(() => Object.entries(logs.reduce<Record<string, SetLog[]>>((groups, entry) => { (groups[entry.date] ??= []).push(entry); return groups; }, {})).sort(([a], [b]) => b.localeCompare(a)).slice(0, 14), [logs]);
+  const addSets = () => { const valid = reps.filter((rep) => rep.trim()); if (!valid.length) return; saveLogs([...logs, ...valid.map((rep) => ({ id: crypto.randomUUID(), date, exercise: selected.name, pattern: selected.pattern, reps: rep.trim(), notes }))]); setReps([""]); setNotes(""); };
+  const deleteSet = (id: string) => saveLogs(logs.filter((entry) => entry.id !== id));
+  const changeSetCount = (amount: number) => setReps((current) => amount > 0 ? [...current, ""] : current.length > 1 ? current.slice(0, -1) : current);
 
-  useEffect(() => {
-    const entry = saved[date];
-    if (entry) {
-      setExercises(entry.exercises);
-      setStructure(entry.structure);
-      setReadiness(entry.readiness);
-      setSessionNote(entry.note);
-    } else {
-      setExercises(starterExercises());
-      setStructure("Practice sets");
-      setReadiness(4);
-      setSessionNote("");
-    }
-  }, [date]);
+  return <main>
+    <header><h1>Exercise log</h1><div className="header-right"><label>Date <input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label><button className="theme-toggle" onClick={() => { const next = !darkMode; setDarkMode(next); localStorage.setItem("kboges-theme", next ? "dark" : "light"); }}>{darkMode ? "Light" : "Dark"}</button></div></header>
+    <section className="week"><h2>This week <small>Sunday–Saturday</small></h2><div>{(["push", "pull", "legs"] as Pattern[]).map((pattern) => <p key={pattern}><strong>{totals[pattern]}</strong> {patternNames[pattern]} set{totals[pattern] === 1 ? "" : "s"}</p>)}</div><p className="weekly-guide">Orientation: aim for roughly 10–20 hard sets per pattern each week, building up gradually.</p></section>
 
-  const totalSets = useMemo(
-    () => exercises.reduce((sum, exercise) => sum + exercise.sets.filter((set) => set.reps).length, 0),
-    [exercises],
-  );
+    <section className="add"><h2>Add sets for {date === today ? "today" : formatDate(date)}</h2><div className="form"><label>Exercise<select value={exercise} onChange={(event) => setExercise(event.target.value)}>{(["push", "pull", "legs"] as Pattern[]).map((pattern) => <optgroup key={pattern} label={patternNames[pattern]}>{exercises.filter((item) => item.pattern === pattern).map((item) => <option key={item.name}>{item.name}</option>)}</optgroup>)}</select></label><div className="set-count"><span>Sets</span><button onClick={() => changeSetCount(-1)}>−</button><b>{reps.length}</b><button onClick={() => changeSetCount(1)}>+</button></div><label className="reps">Reps{reps.map((rep, index) => <input key={index} inputMode="numeric" value={rep} placeholder={`Set ${index + 1}`} onChange={(event) => setReps((current) => current.map((value, currentIndex) => currentIndex === index ? event.target.value : value))} />)}</label><label className="notes-field">Notes <input value={notes} placeholder="optional" onChange={(event) => setNotes(event.target.value)} /></label><button className="add-button" onClick={addSets}>Add to today</button></div><p className="hint">Each row is one hard set. Add another batch later if you train again.</p></section>
 
-  const updateExercise = (id: string, next: Partial<Exercise>) =>
-    setExercises((current) => current.map((exercise) => (exercise.id === id ? { ...exercise, ...next } : exercise)));
+    <section className="today"><h2>Today’s log</h2>{todayLogs.length === 0 ? <p className="empty">No sets logged.</p> : <table><thead><tr><th>Exercise</th><th>Reps</th><th>Notes</th><th></th></tr></thead><tbody>{todayLogs.map((entry) => <tr key={entry.id}><td>{entry.exercise}</td><td>{entry.reps}</td><td>{entry.notes}</td><td><button onClick={() => deleteSet(entry.id)}>Delete</button></td></tr>)}</tbody></table>}</section>
 
-  const updateSet = (id: string, index: number, next: Partial<SetLog>) =>
-    setExercises((current) => current.map((exercise) =>
-      exercise.id === id
-        ? { ...exercise, sets: exercise.sets.map((set, setIndex) => (setIndex === index ? { ...set, ...next } : set)) }
-        : exercise,
-    ));
-
-  const saveSession = () => {
-    const next = { ...saved, [date]: { exercises, structure, readiness, note: sessionNote } };
-    setSaved(next);
-    localStorage.setItem("kboges-tracker", JSON.stringify(next));
-  };
-
-  const addExercise = () => setExercises((current) => [...current, { id: crypto.randomUUID(), name: "New pattern", variation: "Choose a variation", sets: [freshSet()], notes: "" }]);
-
-  return (
-    <main>
-      <section className="hero">
-        <div className="hero-copy">
-          <p className="eyebrow">HIGH-FREQUENCY CALISTHENICS</p>
-          <h1>Move well.<br /><em>Often.</em></h1>
-          <p className="intro">A daily practice log built around the basics: controlled reps, a few reps in reserve, and enough volume you can recover from tomorrow.</p>
-        </div>
-        <div className="framework-card">
-          <img src="/simple-framework.png" alt="Simple framework for fitness" />
-          <span>YOUR COMPASS, NOT A RULEBOOK</span>
-        </div>
-      </section>
-
-      <section className="control-bar" aria-label="Session settings">
-        <label><span>Date</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
-        <label><span>Set structure</span><select value={structure} onChange={(event) => setStructure(event.target.value)}><option>Practice sets</option><option>Simple straight sets</option><option>Density block</option><option>Easy volume day</option><option>Freestyle practice</option></select></label>
-        <div className="readiness"><span>Readiness</span><div className="readiness-dots">{[1, 2, 3, 4, 5].map((number) => <button key={number} className={number <= readiness ? "active" : ""} onClick={() => setReadiness(number)} aria-label={`Readiness ${number} of 5`}>{number}</button>)}</div></div>
-        <button className="save-button" onClick={saveSession}>Save session <span>→</span></button>
-      </section>
-
-      <section className="guidance">
-        <p><strong>Today’s cue:</strong> Leave 1–3 clean reps in reserve. If form changes, the set is over.</p>
-        <span>{totalSets} logged working {totalSets === 1 ? "set" : "sets"}</span>
-      </section>
-
-      <section className="tracker" aria-label="Exercise tracker">
-        <div className="tracker-heading"><div><p className="eyebrow">SESSION LOG</p><h2>Build your practice</h2></div><p>Rotate variations when a pattern feels worn down. Keep the motor patterns familiar.</p></div>
-        <div className="exercise-list">
-          {exercises.map((exercise, exerciseIndex) => (
-            <article className="exercise-card" key={exercise.id}>
-              <div className="exercise-number">{String(exerciseIndex + 1).padStart(2, "0")}</div>
-              <div className="exercise-main">
-                <input className="pattern-input" aria-label="Movement pattern" value={exercise.name} onChange={(event) => updateExercise(exercise.id, { name: event.target.value })} />
-                <input className="variation-input" aria-label="Exercise variation" value={exercise.variation} onChange={(event) => updateExercise(exercise.id, { variation: event.target.value })} />
-              </div>
-              <div className="sets-area">
-                <div className="set-labels"><span>SET</span><span>REPS / TIME</span><span>RIR</span><span>FORM</span></div>
-                {exercise.sets.map((set, setIndex) => <div className="set-row" key={setIndex}>
-                  <b>{setIndex + 1}</b>
-                  <input inputMode="decimal" aria-label={`Set ${setIndex + 1} reps or time`} placeholder="—" value={set.reps} onChange={(event) => updateSet(exercise.id, setIndex, { reps: event.target.value })} />
-                  <input inputMode="numeric" aria-label={`Set ${setIndex + 1} reps in reserve`} value={set.rir} onChange={(event) => updateSet(exercise.id, setIndex, { rir: event.target.value })} />
-                  <select aria-label={`Set ${setIndex + 1} form quality`} value={set.quality} onChange={(event) => updateSet(exercise.id, setIndex, { quality: Number(event.target.value) })}>{[5, 4, 3, 2, 1].map((score) => <option key={score} value={score}>{"●".repeat(score)}{"○".repeat(5 - score)}</option>)}</select>
-                </div>)}
-                <button className="add-set" onClick={() => updateExercise(exercise.id, { sets: [...exercise.sets, freshSet()] })}>+ Add set</button>
-              </div>
-              <input className="note-input" aria-label={`${exercise.name} note`} placeholder="Form cue / note" value={exercise.notes} onChange={(event) => updateExercise(exercise.id, { notes: event.target.value })} />
-            </article>
-          ))}
-        </div>
-        <button className="add-pattern" onClick={addExercise}>+ Add another movement pattern</button>
-      </section>
-
-      <section className="reflection">
-        <div><p className="eyebrow">CLOSE THE LOOP</p><h2>What did you notice?</h2><p>Progress can be more control, a fuller range, better connection, or simply another week of good training.</p></div>
-        <textarea aria-label="Session reflection" value={sessionNote} onChange={(event) => setSessionNote(event.target.value)} placeholder="e.g. Neutral-grip pull-ups felt smooth. Keep the same variation tomorrow; take an easy squat day." />
-      </section>
-      <footer>Inspired by the high-frequency, basics-first training philosophy of Kyle Boggeman. Your data stays in this browser.</footer>
-    </main>
-  );
+    <section className="history"><h2>Exercise history</h2>{groupedHistory.length === 0 ? <p className="empty">Your logged sets will appear here.</p> : groupedHistory.map(([day, entries]) => <div className="history-day" key={day}><strong>{formatDate(day)}</strong><ul>{entries.map((entry) => <li key={entry.id}>{entry.exercise} · {entry.reps} reps{entry.notes ? ` · ${entry.notes}` : ""}<button onClick={() => deleteSet(entry.id)}>Delete</button></li>)}</ul></div>)}</section>
+    <footer>Counts are hard sets. Keep the movement choices simple; use variations when you want or need them.</footer>
+  </main>;
 }
