@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { completeLogin, isConfigured, isLoggedIn, logout, startLogin } from "./dropbox-auth";
 import { loadWorkoutLog, saveWorkoutLog, type Pattern, type SetLog } from "./log-store";
@@ -16,6 +16,11 @@ const shiftDate = (value: string, days: number) => { const date = new Date(`${va
 const weekStart = (value: string) => { const d = new Date(`${value}T12:00:00`); d.setDate(d.getDate() - d.getDay()); return d.toISOString().slice(0, 10); };
 const formatDate = (value: string) => new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 const formatShortDate = (value: string) => new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { month: "numeric", day: "numeric" });
+const saveError = (error: unknown) => {
+  const message = (error as { error?: { error_summary?: string }; message?: string }).error?.error_summary ?? (error as { message?: string }).message ?? "unknown Dropbox error";
+  if (message.includes("invalid_access_token") || message.includes("expired_access_token")) return "Dropbox connection expired. Disconnect, then reconnect.";
+  return `Save failed: ${message}`;
+};
 
 function App() {
   const [date, setDate] = useState(localDate());
@@ -26,8 +31,15 @@ function App() {
   const [dark, setDark] = useState(() => localStorage.getItem("workout-log:theme") !== "light");
   const [status, setStatus] = useState("Loading Dropbox…");
   const [ready, setReady] = useState(false);
+  const logsRef = useRef<SetLog[]>([]);
+  const dayNotesRef = useRef<Record<string, string>>({});
+  const noteTimer = useRef<number | undefined>(undefined);
+  const saveQueue = useRef(Promise.resolve());
 
   useEffect(() => { document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("workout-log:theme", dark ? "dark" : "light"); }, [dark]);
+  useEffect(() => { logsRef.current = logs; }, [logs]);
+  useEffect(() => { dayNotesRef.current = dayNotes; }, [dayNotes]);
+  useEffect(() => () => { if (noteTimer.current) window.clearTimeout(noteTimer.current); }, []);
   useEffect(() => {
     const initialize = async () => {
       try {
@@ -49,9 +61,22 @@ function App() {
   const totals = useMemo(() => logs.filter((entry) => entry.date >= start && entry.date <= new Date(new Date(`${start}T12:00:00`).getTime() + 6 * 86400000).toISOString().slice(0, 10)).reduce<Record<Pattern, number>>((sum, entry) => { sum[entry.pattern] += 1; return sum; }, { push: 0, pull: 0, legs: 0 }), [logs, start]);
   const history = useMemo(() => Object.entries(logs.filter((entry) => entry.date <= date).reduce<Record<string, SetLog[]>>((groups, entry) => { (groups[entry.date] ??= []).push(entry); return groups; }, { [date]: [] })).sort(([a], [b]) => b.localeCompare(a)).slice(0, 14), [logs, date]);
   const groupByExercise = (entries: SetLog[]) => Object.entries(entries.reduce<Record<string, SetLog[]>>((groups, entry) => { (groups[entry.exercise] ??= []).push(entry); return groups; }, {}));
-  const persist = async (nextSets: SetLog[], nextDayNotes = dayNotes) => { setLogs(nextSets); setDayNotes(nextDayNotes); setStatus("Saving…"); try { await saveWorkoutLog({ sets: nextSets, dayNotes: nextDayNotes }); setStatus(""); } catch { setStatus("Save failed. Check Dropbox and try again."); } };
-  const addSet = () => { if (!reps.trim()) return; void persist([...logs, { id: crypto.randomUUID(), date, exercise: selected.name, pattern: selected.pattern, reps: reps.trim() }]); setReps(""); };
-  const updateDayNote = (note: string) => { const next = { ...dayNotes, [date]: note }; void persist(logs, next); };
+  const persist = (nextSets: SetLog[], nextDayNotes = dayNotesRef.current) => {
+    logsRef.current = nextSets; dayNotesRef.current = nextDayNotes;
+    setLogs(nextSets); setDayNotes(nextDayNotes); setStatus("Saving…");
+    saveQueue.current = saveQueue.current.catch(() => undefined).then(async () => {
+      try { await saveWorkoutLog({ sets: nextSets, dayNotes: nextDayNotes }); setStatus(""); }
+      catch (error) { setStatus(saveError(error)); }
+    });
+    return saveQueue.current;
+  };
+  const addSet = () => { if (!reps.trim()) return; if (noteTimer.current) window.clearTimeout(noteTimer.current); void persist([...logsRef.current, { id: crypto.randomUUID(), date, exercise: selected.name, pattern: selected.pattern, reps: reps.trim() }]); setReps(""); };
+  const updateDayNote = (note: string) => {
+    const next = { ...dayNotesRef.current, [date]: note };
+    dayNotesRef.current = next; setDayNotes(next); setStatus("Saving soon…");
+    if (noteTimer.current) window.clearTimeout(noteTimer.current);
+    noteTimer.current = window.setTimeout(() => { noteTimer.current = undefined; void persist(logsRef.current, dayNotesRef.current); }, 1500);
+  };
 
   if (!isConfigured() || !isLoggedIn()) return <main className="auth"><h1>Exercise log</h1><p>{status}</p><button onClick={() => void startLogin()} disabled={!isConfigured()}>Connect Dropbox</button>{!isConfigured() && <p className="help">Add `VITE_DROPBOX_CLIENT_ID` to `.env.local` first.</p>}</main>;
   if (!ready) return <main className="auth"><h1>Exercise log</h1><p>Loading your log…</p></main>;
@@ -59,7 +84,7 @@ function App() {
     <header><h1>Exercise log</h1><div className="header-right"><div className="header-actions"><button className="theme-toggle" onClick={() => setDark((value) => !value)}>{dark ? "Light" : "Dark"}</button><button className="link-button" onClick={() => { logout(); window.location.reload(); }}>Disconnect</button></div><div className="date-controls"><span>Date</span><button aria-label="Previous day" onClick={() => setDate((value) => shiftDate(value, -1))}>←</button><input aria-label="Date" type="date" value={date} max={localDate()} onChange={(event) => setDate(event.target.value)} />{!isCurrentDay && <button aria-label="Next day" onClick={() => setDate((value) => shiftDate(value, 1))}>→</button>}</div></div></header>
     <section className="week"><h2>This week <small>{formatShortDate(start)}–{formatShortDate(end)}</small></h2><div>{(["push", "pull", "legs"] as Pattern[]).map((pattern) => <p key={pattern}><strong>{totals[pattern]}</strong> {patternNames[pattern]} set{totals[pattern] === 1 ? "" : "s"}</p>)}</div><p className="weekly-guide">Orientation: aim for roughly 10–20 hard sets per pattern each week, building up gradually.</p></section>
     <section className="add"><h2>Add a set</h2><div className="form"><label>Exercise<select value={exercise} onChange={(event) => setExercise(event.target.value)}>{(["push", "pull", "legs"] as Pattern[]).map((pattern) => <optgroup key={pattern} label={patternNames[pattern]}>{exercises.filter((item) => item.pattern === pattern).map((item) => <option key={item.name}>{item.name}</option>)}</optgroup>)}</select></label><label className="reps">Reps<input inputMode="numeric" value={reps} placeholder="Reps" onChange={(event) => setReps(event.target.value)} /></label><button className="add-button" onClick={addSet}>Add to today</button></div><label className="day-notes">Notes for this day<textarea value={dayNotes[date] ?? ""} placeholder="How did it feel? Anything to remember?" onChange={(event) => updateDayNote(event.target.value)} /></label></section>
-    <section className="history"><h2>Exercise history</h2>{history.map(([day, entries]) => <div className={`history-day${day === date ? " current-day" : ""}`} key={day}><strong>{day === date ? <><span>Today</span><span>{formatDate(day)}</span></> : formatDate(day)}</strong><div>{entries.length === 0 ? <p className="empty">No sets logged yet.</p> : <div className="exercise-groups">{groupByExercise(entries).map(([exerciseName, sets]) => <div className="exercise-group" key={exerciseName}><b>{patternNames[sets[0].pattern]} <small>({exerciseName})</small></b><ul>{sets.map((entry) => <li key={entry.id}>{entry.reps} reps<button onClick={() => void persist(logs.filter((item) => item.id !== entry.id))}>Delete</button></li>)}</ul></div>)}</div>}{day !== date && dayNotes[day] && <p className="saved-day-note">{dayNotes[day]}</p>}</div></div>)}</section>
+    <section className="history"><h2>Exercise history</h2>{history.map(([day, entries]) => <div className={`history-day${day === date ? " current-day" : ""}`} key={day}><strong>{day === date ? <><span>Today</span><span>{formatDate(day)}</span></> : formatDate(day)}</strong><div>{entries.length === 0 ? <p className="empty">No sets logged yet.</p> : <div className="exercise-groups">{groupByExercise(entries).map(([exerciseName, sets]) => <div className="exercise-group" key={exerciseName}><b>{patternNames[sets[0].pattern]} <small>({exerciseName})</small></b><ul>{sets.map((entry) => <li key={entry.id}>{entry.reps} reps<button onClick={() => void persist(logsRef.current.filter((item) => item.id !== entry.id))}>Delete</button></li>)}</ul></div>)}</div>}{day !== date && dayNotes[day] && <p className="saved-day-note">{dayNotes[day]}</p>}</div></div>)}</section>
     {status && <footer>{status}</footer>}
   </main>;
 }
