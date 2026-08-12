@@ -29,7 +29,7 @@ function App() {
   const [logs, setLogs] = useState<SetLog[]>([]);
   const [dayNotes, setDayNotes] = useState<Record<string, string>>({});
   const [exercise, setExercise] = useState(exercises[0].name);
-  const [reps, setReps] = useState("");
+  const [reps, setReps] = useState("0");
   const [dark, setDark] = useState(() => localStorage.getItem("workout-log:theme") !== "light");
   const [status, setStatus] = useState("Loading Dropbox…");
   const [ready, setReady] = useState(false);
@@ -65,9 +65,6 @@ function App() {
   const groupByExercise = (entries: SetLog[]) => Object.entries(entries.reduce<Record<string, SetLog[]>>((groups, entry) => { (groups[entry.exercise] ??= []).push(entry); return groups; }, {}));
   // Most recent exercise per pattern, so tapping a pattern tab lands on what you actually train.
   const lastByPattern = useMemo(() => logs.reduce<Partial<Record<Pattern, string>>>((map, entry) => { map[entry.pattern] = entry.exercise; return map; }, {}), [logs]);
-  // Most recent reps for this exercise. The field starts blank; this only seeds − and + so they
-  // don't have to crawl up from zero.
-  const lastReps = useMemo(() => logs.findLast((entry) => entry.exercise === exercise)?.reps, [logs, exercise]);
 
   const persist = (nextSets: SetLog[], nextDayNotes = dayNotesRef.current) => {
     logsRef.current = nextSets; dayNotesRef.current = nextDayNotes;
@@ -79,16 +76,14 @@ function App() {
     return saveQueue.current;
   };
   const logSet = () => {
-    const trimmed = reps.trim();
-    if (!Number(trimmed)) return;
+    if (!Number(reps)) return;
     if (noteTimer.current) window.clearTimeout(noteTimer.current);
-    void persist([...logsRef.current, { id: crypto.randomUUID(), date, exercise: selected.name, pattern: selected.pattern, reps: trimmed }]);
-    setReps("");
+    void persist([...logsRef.current, { id: crypto.randomUUID(), date, exercise: selected.name, pattern: selected.pattern, reps }]);
+    setReps("0");
   };
-  const stepReps = (amount: number) => setReps((current) => {
-    const base = Number(current || lastReps || "10");
-    return String(Math.max(1, (Number.isFinite(base) ? base : 10) + amount));
-  });
+  const stepReps = (amount: number) => setReps((current) => String(Math.max(0, Number(current) + amount)));
+  // Digits only, and no leading zeros, so typing into the default 0 gives "8" rather than "08".
+  const editReps = (value: string) => setReps(value.replace(/\D/g, "").replace(/^0+(?=\d)/, "") || "0");
   const selectPattern = (pattern: Pattern) => setExercise(lastByPattern[pattern] ?? exercises.find((item) => item.pattern === pattern)!.name);
   const updateDayNote = (note: string) => {
     const next = { ...dayNotesRef.current, [date]: note };
@@ -135,11 +130,11 @@ function App() {
         <label className="reps-field">Reps
           <span>
             <button aria-label="One less rep" onClick={() => stepReps(-1)}>−</button>
-            <input aria-label="Reps" inputMode="numeric" value={reps} onChange={(event) => setReps(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") logSet(); }} />
+            <input aria-label="Reps" inputMode="numeric" value={reps} onFocus={(event) => event.target.select()} onChange={(event) => editReps(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") logSet(); }} />
             <button aria-label="One more rep" onClick={() => stepReps(1)}>+</button>
           </span>
         </label>
-        <button className="primary" disabled={!Number(reps.trim())} onClick={logSet}>Log {isCurrentDay ? "today" : formatShortDate(date)}</button>
+        <button className="primary" disabled={!Number(reps)} onClick={logSet}>Log</button>
       </div>
       <details className="day-notes" open={Boolean(dayNotes[date])}>
         <summary>Notes for this day</summary>
