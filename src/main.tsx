@@ -151,7 +151,8 @@ function App() {
           {entries.length === 0 ? <p className="empty">No sets logged yet.</p> : <div className="exercise-groups">
             {groupByExercise(entries).map(([exerciseName, sets]) => <div className="exercise-group" key={exerciseName}>
               <b>{patternNames[sets[0].pattern]} <small>({exerciseName})</small></b>
-              <ul>{sets.map((entry) => <li key={entry.id}><span>{repLabel(entry.reps)}</span><button className="delete" aria-label={`Delete ${repLabel(entry.reps)} of ${exerciseName}`} onClick={() => void persist(logsRef.current.filter((item) => item.id !== entry.id))}>×</button></li>)}</ul>
+              {/* Delete is offered only on the selected day, so earlier days can't be edited by a stray tap. */}
+              <ul>{sets.map((entry) => <li key={entry.id}><span>{repLabel(entry.reps)}</span>{day === date && <button className="delete" aria-label={`Delete ${repLabel(entry.reps)} of ${exerciseName}`} onClick={() => void persist(logsRef.current.filter((item) => item.id !== entry.id))}>×</button>}</li>)}</ul>
             </div>)}
           </div>}
           {day !== date && dayNotes[day] && <p className="saved-day-note">{dayNotes[day]}</p>}
