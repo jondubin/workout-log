@@ -83,7 +83,8 @@ function App() {
   };
   const stepReps = (amount: number) => setReps((current) => String(Math.max(0, Number(current) + amount)));
   // Digits only, and no leading zeros, so typing into the default 0 gives "8" rather than "08".
-  const editReps = (value: string) => setReps(value.replace(/\D/g, "").replace(/^0+(?=\d)/, "") || "0");
+  // Clearing the field is allowed while it has focus; blur restores 0.
+  const editReps = (value: string) => setReps(value.replace(/\D/g, "").replace(/^0+(?=\d)/, ""));
   const selectPattern = (pattern: Pattern) => setExercise(lastByPattern[pattern] ?? exercises.find((item) => item.pattern === pattern)!.name);
   const updateDayNote = (note: string) => {
     const next = { ...dayNotesRef.current, [date]: note };
@@ -130,7 +131,7 @@ function App() {
         <label className="reps-field">Reps
           <span>
             <button aria-label="One less rep" onClick={() => stepReps(-1)}>−</button>
-            <input aria-label="Reps" inputMode="numeric" value={reps} onFocus={(event) => event.target.select()} onChange={(event) => editReps(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") logSet(); }} />
+            <input aria-label="Reps" inputMode="numeric" value={reps} onFocus={() => setReps((current) => current === "0" ? "" : current)} onBlur={() => setReps((current) => current || "0")} onChange={(event) => editReps(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") logSet(); }} />
             <button aria-label="One more rep" onClick={() => stepReps(1)}>+</button>
           </span>
         </label>
