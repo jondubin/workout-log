@@ -16,9 +16,13 @@ h1,h2{margin:0;font-size:23px}h2{font-size:19px}
 input,select,textarea{border:1px solid var(--line);padding:8px;background:var(--surface);color:var(--ink);outline-color:var(--ink)}
 .week,.add,.history{padding:22px 0;border-bottom:1px solid var(--line)}
 .week h2 small{font-size:13px;font-weight:400;color:var(--muted)}
-.week div{display:flex;gap:30px;margin-top:13px}.week p{margin:0;font-size:15px}
+.week-stats{display:flex;gap:30px;margin-top:13px}.week-stat p{margin:0;font-size:15px}
 .week strong{font-size:28px;font-weight:400;font-variant-numeric:tabular-nums}
+.weekly-target{display:flex;align-items:center;gap:6px;margin-top:8px;color:var(--muted);font-size:12px}
+.weekly-target input{width:48px;padding:2px 5px;color:var(--ink);font-size:13px;font-variant-numeric:tabular-nums}
+.week-stat .week-pace{margin-top:5px;color:var(--muted);font-size:12px}
 .weekly-guide,.empty{margin:18px 0 0;color:var(--muted);font-size:14px}
+.weekly-guide{margin-top:10px}
 
 .add h2{margin-bottom:13px}
 .tabs{display:flex;gap:0}
@@ -58,7 +62,9 @@ input,select,textarea{border:1px solid var(--line);padding:8px;background:var(--
 
 @media(max-width:650px){
   main{padding:20px 14px 72px}
-  .week div{gap:15px}
+  .week-stats{gap:11px}
+  .week strong{font-size:24px}
+  .week-stat p{font-size:14px}
   .reps-row .primary{padding:10px 8px}
   .history-day{grid-template-columns:1fr;gap:5px}
   .history-day.current-day strong{display:flex;gap:8px}

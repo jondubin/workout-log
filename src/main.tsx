@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { completeLogin, isConfigured, isLoggedIn, logout, startLogin } from "./dropbox-auth";
-import { loadWorkoutLog, saveWorkoutLog, type Pattern, type SetLog } from "./log-store";
+import { defaultWeeklyTargets, loadWorkoutLog, saveWorkoutLog, type Pattern, type SetLog, type WeeklyTargets } from "./log-store";
 import "./style.css";
 
 type Exercise = { name: string; short: string; pattern: Pattern };
@@ -12,6 +12,8 @@ const exercises: Exercise[] = [
 ];
 const patterns: Pattern[] = ["push", "pull", "legs"];
 const patternNames: Record<Pattern, string> = { push: "Push", pull: "Pull", legs: "Legs" };
+// Keep the target experiment ready to restore without showing it for now.
+const showWeeklyTargets = false;
 const localDate = () => { const now = new Date(); return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 const shiftDate = (value: string, days: number) => { const date = new Date(`${value}T12:00:00`); date.setDate(date.getDate() + days); return date.toISOString().slice(0, 10); };
 const weekStart = (value: string) => { const d = new Date(`${value}T12:00:00`); d.setDate(d.getDate() - d.getDay()); return d.toISOString().slice(0, 10); };
@@ -28,6 +30,7 @@ function App() {
   const [date, setDate] = useState(localDate());
   const [logs, setLogs] = useState<SetLog[]>([]);
   const [dayNotes, setDayNotes] = useState<Record<string, string>>({});
+  const [weeklyTargets, setWeeklyTargets] = useState<WeeklyTargets>(defaultWeeklyTargets);
   const [exercise, setExercise] = useState(exercises[0].name);
   const [reps, setReps] = useState("0");
   const [dark, setDark] = useState(() => localStorage.getItem("workout-log:theme") !== "light");
@@ -35,12 +38,14 @@ function App() {
   const [ready, setReady] = useState(false);
   const logsRef = useRef<SetLog[]>([]);
   const dayNotesRef = useRef<Record<string, string>>({});
+  const weeklyTargetsRef = useRef<WeeklyTargets>(defaultWeeklyTargets);
   const noteTimer = useRef<number | undefined>(undefined);
   const saveQueue = useRef(Promise.resolve());
 
   useEffect(() => { document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("workout-log:theme", dark ? "dark" : "light"); }, [dark]);
   useEffect(() => { logsRef.current = logs; }, [logs]);
   useEffect(() => { dayNotesRef.current = dayNotes; }, [dayNotes]);
+  useEffect(() => { weeklyTargetsRef.current = weeklyTargets; }, [weeklyTargets]);
   useEffect(() => () => { if (noteTimer.current) window.clearTimeout(noteTimer.current); }, []);
   useEffect(() => {
     const initialize = async () => {
@@ -49,7 +54,10 @@ function App() {
         if (!isConfigured()) { setStatus("Dropbox app key is not configured."); return; }
         if (!isLoggedIn()) { setStatus("Connect Dropbox to start your log."); return; }
         const saved = await loadWorkoutLog();
-        setLogs(saved.sets); setDayNotes(saved.dayNotes); setStatus("");
+        setLogs(saved.sets); setDayNotes(saved.dayNotes); setWeeklyTargets(saved.weeklyTargets);
+        const lastExercise = saved.sets.at(-1)?.exercise;
+        if (lastExercise && exercises.some((item) => item.name === lastExercise)) setExercise(lastExercise);
+        setStatus("");
       } catch { setStatus("Couldn’t load Dropbox. Try reconnecting."); }
       finally { setReady(true); }
     };
@@ -60,17 +68,18 @@ function App() {
   const isCurrentDay = date === localDate();
   const start = weekStart(date);
   const end = shiftDate(start, 6);
+  const daysLeft = Math.max(1, Math.round((new Date(`${end}T12:00:00`).getTime() - new Date(`${date}T12:00:00`).getTime()) / 86400000) + 1);
   const totals = useMemo(() => logs.filter((entry) => entry.date >= start && entry.date <= end).reduce<Record<Pattern, number>>((sum, entry) => { sum[entry.pattern] += 1; return sum; }, { push: 0, pull: 0, legs: 0 }), [logs, start, end]);
   const history = useMemo(() => Object.entries(logs.filter((entry) => entry.date <= date).reduce<Record<string, SetLog[]>>((groups, entry) => { (groups[entry.date] ??= []).push(entry); return groups; }, { [date]: [] })).sort(([a], [b]) => b.localeCompare(a)).slice(0, 14), [logs, date]);
   const groupByExercise = (entries: SetLog[]) => Object.entries(entries.reduce<Record<string, SetLog[]>>((groups, entry) => { (groups[entry.exercise] ??= []).push(entry); return groups; }, {}));
   // Most recent exercise per pattern, so tapping a pattern tab lands on what you actually train.
   const lastByPattern = useMemo(() => logs.reduce<Partial<Record<Pattern, string>>>((map, entry) => { map[entry.pattern] = entry.exercise; return map; }, {}), [logs]);
 
-  const persist = (nextSets: SetLog[], nextDayNotes = dayNotesRef.current) => {
-    logsRef.current = nextSets; dayNotesRef.current = nextDayNotes;
-    setLogs(nextSets); setDayNotes(nextDayNotes); setStatus("Saving…");
+  const persist = (nextSets: SetLog[], nextDayNotes = dayNotesRef.current, nextWeeklyTargets = weeklyTargetsRef.current) => {
+    logsRef.current = nextSets; dayNotesRef.current = nextDayNotes; weeklyTargetsRef.current = nextWeeklyTargets;
+    setLogs(nextSets); setDayNotes(nextDayNotes); setWeeklyTargets(nextWeeklyTargets); setStatus("Saving…");
     saveQueue.current = saveQueue.current.catch(() => undefined).then(async () => {
-      try { await saveWorkoutLog({ sets: nextSets, dayNotes: nextDayNotes }); setStatus(""); }
+      try { await saveWorkoutLog({ sets: nextSets, dayNotes: nextDayNotes, weeklyTargets: nextWeeklyTargets }); setStatus(""); }
       catch (error) { setStatus(saveError(error)); }
     });
     return saveQueue.current;
@@ -86,6 +95,19 @@ function App() {
   // Clearing the field is allowed while it has focus; blur restores 0.
   const editReps = (value: string) => setReps(value.replace(/\D/g, "").replace(/^0+(?=\d)/, ""));
   const selectPattern = (pattern: Pattern) => setExercise(lastByPattern[pattern] ?? exercises.find((item) => item.pattern === pattern)!.name);
+  const changeWeeklyTarget = (pattern: Pattern, value: number) => {
+    const next = { ...weeklyTargetsRef.current, [pattern]: Math.max(0, value) };
+    void persist(logsRef.current, dayNotesRef.current, next);
+  };
+  // Pace as a range, not a decimal: 2.5 reads as "2–3 per day", since the aim is guidance.
+  const perDayLeft = (pattern: Pattern) => {
+    const remaining = Math.max(0, weeklyTargets[pattern] - totals[pattern]);
+    if (!remaining) return "aim met";
+    const average = remaining / daysLeft;
+    const low = Math.floor(average);
+    const high = Math.ceil(average);
+    return `${low === 0 || low === high ? high : `${low}–${high}`} per day left`;
+  };
   const updateDayNote = (note: string) => {
     const next = { ...dayNotesRef.current, [date]: note };
     dayNotesRef.current = next; setDayNotes(next); setStatus("Saving soon…");
@@ -116,7 +138,16 @@ function App() {
 
     <section className="week">
       <h2>This week <small>{formatShortDate(start)}–{formatShortDate(end)}</small></h2>
-      <div>{patterns.map((pattern) => <p key={pattern}><strong>{totals[pattern]}</strong> {patternNames[pattern]} set{totals[pattern] === 1 ? "" : "s"}</p>)}</div>
+      <div className="week-stats">{patterns.map((pattern) => <div className="week-stat" key={pattern}>
+        <p><strong>{totals[pattern]}</strong> {patternNames[pattern]} set{totals[pattern] === 1 ? "" : "s"}</p>
+        {showWeeklyTargets && <>
+          {/* One quiet number per pattern — an aim to glance at, not a quota to hit. */}
+          <label className="weekly-target">Aim
+            <input type="number" min="0" aria-label={`${patternNames[pattern]} sets to aim for this week`} value={weeklyTargets[pattern]} onChange={(event) => changeWeeklyTarget(pattern, Number(event.target.value))} />
+          </label>
+          <p className="week-pace">{perDayLeft(pattern)}</p>
+        </>}
+      </div>)}</div>
       <p className="weekly-guide">Orientation: aim for roughly 10–20 hard sets per pattern each week, building up gradually.</p>
     </section>
 
