@@ -23,6 +23,7 @@ function App() {
   const [reps, setReps] = useState("");
   const [dark, setDark] = useState(() => localStorage.getItem("workout-log:theme") !== "light");
   const [status, setStatus] = useState("Loading Dropbox…");
+  const [ready, setReady] = useState(false);
 
   useEffect(() => { document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("workout-log:theme", dark ? "dark" : "light"); }, [dark]);
   useEffect(() => {
@@ -34,6 +35,7 @@ function App() {
         const saved = await loadWorkoutLog();
         setLogs(saved.sets); setDayNotes(saved.dayNotes); setStatus("");
       } catch { setStatus("Couldn’t load Dropbox. Try reconnecting."); }
+      finally { setReady(true); }
     };
     void initialize();
   }, []);
@@ -47,6 +49,7 @@ function App() {
   const updateDayNote = (note: string) => { const next = { ...dayNotes, [date]: note }; void persist(logs, next); };
 
   if (!isConfigured() || !isLoggedIn()) return <main className="auth"><h1>Exercise log</h1><p>{status}</p><button onClick={() => void startLogin()} disabled={!isConfigured()}>Connect Dropbox</button>{!isConfigured() && <p className="help">Add `VITE_DROPBOX_CLIENT_ID` to `.env.local` first.</p>}</main>;
+  if (!ready) return <main className="auth"><h1>Exercise log</h1><p>Loading your log…</p></main>;
   return <main>
     <header><h1>Exercise log</h1><div className="header-right"><label>Date <input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label><button className="theme-toggle" onClick={() => setDark((value) => !value)}>{dark ? "Light" : "Dark"}</button><button className="link-button" onClick={() => { logout(); window.location.reload(); }}>Disconnect</button></div></header>
     <section className="week"><h2>This week <small>Sunday–Saturday</small></h2><div>{(["push", "pull", "legs"] as Pattern[]).map((pattern) => <p key={pattern}><strong>{totals[pattern]}</strong> {patternNames[pattern]} set{totals[pattern] === 1 ? "" : "s"}</p>)}</div><p className="weekly-guide">Orientation: aim for roughly 10–20 hard sets per pattern each week, building up gradually.</p></section>
