@@ -139,7 +139,7 @@ function App() {
     <section className="week">
       <h2>This week <small>{formatShortDate(start)}–{formatShortDate(end)}</small></h2>
       <div className="week-stats">{patterns.map((pattern) => <div className="week-stat" key={pattern}>
-        <p><strong>{totals[pattern]}</strong> {patternNames[pattern]} set{totals[pattern] === 1 ? "" : "s"}</p>
+        <p><strong>{totals[pattern]}</strong> {patternNames[pattern]}</p>
         {showWeeklyTargets && <>
           {/* One quiet number per pattern — an aim to glance at, not a quota to hit. */}
           <label className="weekly-target">Aim
