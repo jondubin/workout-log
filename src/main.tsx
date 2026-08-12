@@ -74,6 +74,11 @@ function App() {
   const groupByExercise = (entries: SetLog[]) => Object.entries(entries.reduce<Record<string, SetLog[]>>((groups, entry) => { (groups[entry.exercise] ??= []).push(entry); return groups; }, {}));
   // Most recent exercise per pattern, so tapping a pattern tab lands on what you actually train.
   const lastByPattern = useMemo(() => logs.reduce<Partial<Record<Pattern, string>>>((map, entry) => { map[entry.pattern] = entry.exercise; return map; }, {}), [logs]);
+  const exercisesForPattern = (pattern: Pattern) => {
+    const matching = exercises.filter((item) => item.pattern === pattern);
+    const lastUsed = lastByPattern[pattern];
+    return lastUsed ? [...matching.filter((item) => item.name === lastUsed), ...matching.filter((item) => item.name !== lastUsed)] : matching;
+  };
 
   const persist = (nextSets: SetLog[], nextDayNotes = dayNotesRef.current, nextWeeklyTargets = weeklyTargetsRef.current) => {
     logsRef.current = nextSets; dayNotesRef.current = nextDayNotes; weeklyTargetsRef.current = nextWeeklyTargets;
@@ -157,7 +162,7 @@ function App() {
         {patterns.map((pattern) => <button key={pattern} className={pattern === selected.pattern ? "active" : ""} aria-pressed={pattern === selected.pattern} onClick={() => selectPattern(pattern)}>{patternNames[pattern]}</button>)}
       </div>
       <div className="chips" role="group" aria-label="Exercise">
-        {exercises.filter((item) => item.pattern === selected.pattern).map((item) => <button key={item.name} className={item.name === selected.name ? "active" : ""} aria-pressed={item.name === selected.name} onClick={() => setExercise(item.name)}>{item.short}</button>)}
+        {exercisesForPattern(selected.pattern).map((item) => <button key={item.name} className={item.name === selected.name ? "active" : ""} aria-pressed={item.name === selected.name} onClick={() => setExercise(item.name)}>{item.short}</button>)}
       </div>
       <div className="reps-row">
         <label className="reps-field">Reps
