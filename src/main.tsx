@@ -135,13 +135,18 @@ function App() {
         {exercises.filter((item) => item.pattern === selected.pattern).map((item) => <button key={item.name} className={item.name === selected.name ? "active" : ""} aria-pressed={item.name === selected.name} onClick={() => setExercise(item.name)}>{item.short}</button>)}
       </div>
       <div className="reps-row">
-        <button aria-label="One less rep" onClick={() => stepReps(-1)}>−</button>
-        <input aria-label="Reps" inputMode="numeric" value={reps} placeholder={repSuggestions[0] ?? "reps"} onChange={(event) => setReps(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") logSet(reps); }} />
-        <button aria-label="One more rep" onClick={() => stepReps(1)}>+</button>
+        <label className="reps-field">How many reps?
+          <span>
+            <button aria-label="One less rep" onClick={() => stepReps(-1)}>−</button>
+            <input aria-label="Reps" inputMode="numeric" value={reps} placeholder={repSuggestions[0] ?? "0"} onChange={(event) => setReps(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") logSet(reps); }} />
+            <button aria-label="One more rep" onClick={() => stepReps(1)}>+</button>
+          </span>
+        </label>
         <button className="primary" onClick={() => logSet(reps || repSuggestions[0] || "")}>Log {isCurrentDay ? "today" : formatShortDate(date)}</button>
       </div>
-      {repSuggestions.length > 0 && <div className="quick-reps" role="group" aria-label="Log a recent rep count">
-        {repSuggestions.map((value) => <button key={value} onClick={() => logSet(value)}>{value}</button>)}
+      {repSuggestions.length > 0 && <div className="quick-reps">
+        <span>Or log one straight away</span>
+        <div role="group" aria-label="Log a recent rep count">{repSuggestions.map((value) => <button key={value} onClick={() => logSet(value)}>{value} reps</button>)}</div>
       </div>}
       <details className="day-notes" open={Boolean(dayNotes[date])}>
         <summary>Notes for this day</summary>

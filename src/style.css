@@ -27,12 +27,15 @@ input,select,textarea{border:1px solid var(--line);padding:8px;background:var(--
 .chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
 .chips button{border:1px solid var(--line);background:var(--surface);color:var(--muted);padding:9px 12px;font-size:14px}
 .chips button.active{border-color:var(--ink);color:var(--ink);background:var(--selected)}
-.reps-row{display:flex;align-items:stretch;gap:7px;margin-top:16px}
-.reps-row button{width:46px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:19px;line-height:1}
-.reps-row input{width:72px;text-align:center;font-size:19px;font-variant-numeric:tabular-nums}
-.reps-row .primary{flex:1;width:auto;border-color:var(--ink);font-size:15px;white-space:nowrap}
-.quick-reps{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
-.quick-reps button{min-width:52px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:10px 10px;font-size:16px;font-variant-numeric:tabular-nums}
+.reps-row{display:flex;align-items:flex-end;gap:10px;margin-top:18px}
+.reps-field{display:grid;gap:5px;font-size:13px;color:var(--muted)}
+.reps-field span{display:flex;align-items:stretch;gap:6px}
+.reps-field button{width:44px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:19px;line-height:1}
+.reps-field input{width:74px;border-width:2px;border-color:var(--ink);text-align:center;font-size:21px;font-variant-numeric:tabular-nums}
+.reps-row .primary{flex:1;height:44px;border-color:var(--ink);padding:0 14px;font-size:15px;white-space:nowrap}
+.quick-reps{margin-top:14px;font-size:13px;color:var(--muted)}
+.quick-reps div{display:flex;flex-wrap:wrap;gap:7px;margin-top:5px}
+.quick-reps button{border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:10px 12px;font-size:15px;font-variant-numeric:tabular-nums}
 .day-notes{margin-top:20px;font-size:14px}
 .day-notes summary{color:var(--muted);cursor:pointer;padding:4px 0}
 .day-notes textarea{display:block;width:100%;min-height:70px;margin-top:7px;resize:vertical}
