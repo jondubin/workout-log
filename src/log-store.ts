@@ -9,8 +9,7 @@ export async function loadWorkoutLog(): Promise<WorkoutLog> {
   const client = await getClient();
   try {
     const response = await client.filesDownload({ path });
-    const saved = JSON.parse(await (response.result as unknown as { fileBlob: Blob }).fileBlob.text()) as WorkoutLog | (SetLog & { notes?: string })[];
-    if (Array.isArray(saved)) return { sets: saved.map(({ notes: _notes, ...set }) => set), dayNotes: {} };
+    const saved = JSON.parse(await (response.result as unknown as { fileBlob: Blob }).fileBlob.text()) as WorkoutLog;
     return { sets: saved.sets ?? [], dayNotes: saved.dayNotes ?? {} };
   } catch (error) {
     const summary = (error as { error?: { error_summary?: string } }).error?.error_summary;
