@@ -64,13 +64,8 @@ function App() {
   const groupByExercise = (entries: SetLog[]) => Object.entries(entries.reduce<Record<string, SetLog[]>>((groups, entry) => { (groups[entry.exercise] ??= []).push(entry); return groups; }, {}));
   // Most recent exercise per pattern, so tapping a pattern tab lands on what you actually train.
   const lastByPattern = useMemo(() => logs.reduce<Partial<Record<Pattern, string>>>((map, entry) => { map[entry.pattern] = entry.exercise; return map; }, {}), [logs]);
-  const repSuggestions = useMemo(() => {
-    const values: string[] = [];
-    for (let index = logs.length - 1; index >= 0 && values.length < 6; index -= 1) {
-      if (logs[index].exercise === exercise && !values.includes(logs[index].reps)) values.push(logs[index].reps);
-    }
-    return values;
-  }, [logs, exercise]);
+  // Most recent reps for this exercise, offered as the placeholder so a repeat set needs no typing.
+  const lastReps = useMemo(() => logs.findLast((entry) => entry.exercise === exercise)?.reps, [logs, exercise]);
 
   const persist = (nextSets: SetLog[], nextDayNotes = dayNotesRef.current) => {
     logsRef.current = nextSets; dayNotesRef.current = nextDayNotes;
@@ -89,7 +84,7 @@ function App() {
     setReps("");
   };
   const stepReps = (amount: number) => setReps((current) => {
-    const base = Number(current || repSuggestions[0] || "10");
+    const base = Number(current || lastReps || "10");
     return String(Math.max(1, (Number.isFinite(base) ? base : 10) + amount));
   });
   const selectPattern = (pattern: Pattern) => setExercise(lastByPattern[pattern] ?? exercises.find((item) => item.pattern === pattern)!.name);
@@ -138,16 +133,12 @@ function App() {
         <label className="reps-field">How many reps?
           <span>
             <button aria-label="One less rep" onClick={() => stepReps(-1)}>−</button>
-            <input aria-label="Reps" inputMode="numeric" value={reps} placeholder={repSuggestions[0] ?? "0"} onChange={(event) => setReps(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") logSet(reps); }} />
+            <input aria-label="Reps" inputMode="numeric" value={reps} placeholder={lastReps ?? "0"} onChange={(event) => setReps(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") logSet(reps); }} />
             <button aria-label="One more rep" onClick={() => stepReps(1)}>+</button>
           </span>
         </label>
-        <button className="primary" onClick={() => logSet(reps || repSuggestions[0] || "")}>Log {isCurrentDay ? "today" : formatShortDate(date)}</button>
+        <button className="primary" onClick={() => logSet(reps || lastReps || "")}>Log {isCurrentDay ? "today" : formatShortDate(date)}</button>
       </div>
-      {repSuggestions.length > 0 && <div className="quick-reps">
-        <span>Or log one straight away</span>
-        <div role="group" aria-label="Log a recent rep count">{repSuggestions.map((value) => <button key={value} onClick={() => logSet(value)}>{value} reps</button>)}</div>
-      </div>}
       <details className="day-notes" open={Boolean(dayNotes[date])}>
         <summary>Notes for this day</summary>
         <textarea aria-label="Notes for this day" value={dayNotes[date] ?? ""} placeholder="How did it feel? Anything to remember?" onChange={(event) => updateDayNote(event.target.value)} />
