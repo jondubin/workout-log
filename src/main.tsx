@@ -121,6 +121,7 @@ function App() {
     </section>
 
     <section className="add">
+      <h2>{isCurrentDay ? "Today" : formatDate(date)}</h2>
       <div className="tabs" role="group" aria-label="Movement pattern">
         {patterns.map((pattern) => <button key={pattern} className={pattern === selected.pattern ? "active" : ""} aria-pressed={pattern === selected.pattern} onClick={() => selectPattern(pattern)}>{patternNames[pattern]}</button>)}
       </div>
