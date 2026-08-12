@@ -33,6 +33,7 @@ input,select,textarea{border:1px solid var(--line);padding:8px;background:var(--
 .reps-field button{width:44px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:19px;line-height:1}
 .reps-field input{width:74px;border-width:2px;border-color:var(--ink);text-align:center;font-size:21px;font-variant-numeric:tabular-nums}
 .reps-row .primary{flex:1;height:44px;border-color:var(--ink);padding:0 14px;font-size:15px;white-space:nowrap}
+.reps-row .primary:disabled{border-color:var(--line);color:var(--muted);cursor:default}
 .day-notes{margin-top:20px;font-size:14px}
 .day-notes summary{color:var(--muted);cursor:pointer;padding:4px 0}
 .day-notes textarea{display:block;width:100%;min-height:70px;margin-top:7px;resize:vertical}
@@ -46,7 +47,7 @@ input,select,textarea{border:1px solid var(--line);padding:8px;background:var(--
 .exercise-group b{font-size:15px}.exercise-group b small{font-size:13px;font-weight:400;color:var(--muted)}
 .history-day li{display:flex;align-items:center;gap:4px}
 .history-day li span{font-variant-numeric:tabular-nums}
-.history-day li button{border:0;background:transparent;color:var(--muted);text-decoration:underline;font-size:13px;padding:9px 10px}
+.history-day li .delete{border:0;background:transparent;color:var(--muted);font-size:17px;line-height:1;padding:6px 10px}
 .saved-day-note{margin:9px 0 0;color:var(--muted);white-space:pre-wrap}
 
 .primary{border:1px solid var(--ink);background:var(--surface);color:var(--ink);padding:10px 14px}

@@ -17,6 +17,7 @@ const shiftDate = (value: string, days: number) => { const date = new Date(`${va
 const weekStart = (value: string) => { const d = new Date(`${value}T12:00:00`); d.setDate(d.getDate() - d.getDay()); return d.toISOString().slice(0, 10); };
 const formatDate = (value: string) => new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 const formatShortDate = (value: string) => new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { month: "numeric", day: "numeric" });
+const repLabel = (reps: string) => `${reps} ${Number(reps) === 1 ? "rep" : "reps"}`;
 const saveError = (error: unknown) => {
   const message = (error as { error?: { error_summary?: string }; message?: string }).error?.error_summary ?? (error as { message?: string }).message ?? "unknown Dropbox error";
   if (message.includes("invalid_access_token") || message.includes("expired_access_token")) return "Dropbox connection expired. Disconnect, then reconnect.";
@@ -64,7 +65,8 @@ function App() {
   const groupByExercise = (entries: SetLog[]) => Object.entries(entries.reduce<Record<string, SetLog[]>>((groups, entry) => { (groups[entry.exercise] ??= []).push(entry); return groups; }, {}));
   // Most recent exercise per pattern, so tapping a pattern tab lands on what you actually train.
   const lastByPattern = useMemo(() => logs.reduce<Partial<Record<Pattern, string>>>((map, entry) => { map[entry.pattern] = entry.exercise; return map; }, {}), [logs]);
-  // Most recent reps for this exercise, offered as the placeholder so a repeat set needs no typing.
+  // Most recent reps for this exercise. The field starts blank; this only seeds − and + so they
+  // don't have to crawl up from zero.
   const lastReps = useMemo(() => logs.findLast((entry) => entry.exercise === exercise)?.reps, [logs, exercise]);
 
   const persist = (nextSets: SetLog[], nextDayNotes = dayNotesRef.current) => {
@@ -76,9 +78,9 @@ function App() {
     });
     return saveQueue.current;
   };
-  const logSet = (value: string) => {
-    const trimmed = value.trim();
-    if (!trimmed) return;
+  const logSet = () => {
+    const trimmed = reps.trim();
+    if (!Number(trimmed)) return;
     if (noteTimer.current) window.clearTimeout(noteTimer.current);
     void persist([...logsRef.current, { id: crypto.randomUUID(), date, exercise: selected.name, pattern: selected.pattern, reps: trimmed }]);
     setReps("");
@@ -130,14 +132,14 @@ function App() {
         {exercises.filter((item) => item.pattern === selected.pattern).map((item) => <button key={item.name} className={item.name === selected.name ? "active" : ""} aria-pressed={item.name === selected.name} onClick={() => setExercise(item.name)}>{item.short}</button>)}
       </div>
       <div className="reps-row">
-        <label className="reps-field">How many reps?
+        <label className="reps-field">Reps
           <span>
             <button aria-label="One less rep" onClick={() => stepReps(-1)}>−</button>
-            <input aria-label="Reps" inputMode="numeric" value={reps} placeholder={lastReps ?? "0"} onChange={(event) => setReps(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") logSet(reps); }} />
+            <input aria-label="Reps" inputMode="numeric" value={reps} onChange={(event) => setReps(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") logSet(); }} />
             <button aria-label="One more rep" onClick={() => stepReps(1)}>+</button>
           </span>
         </label>
-        <button className="primary" onClick={() => logSet(reps || lastReps || "")}>Log {isCurrentDay ? "today" : formatShortDate(date)}</button>
+        <button className="primary" disabled={!Number(reps.trim())} onClick={logSet}>Log {isCurrentDay ? "today" : formatShortDate(date)}</button>
       </div>
       <details className="day-notes" open={Boolean(dayNotes[date])}>
         <summary>Notes for this day</summary>
@@ -153,7 +155,7 @@ function App() {
           {entries.length === 0 ? <p className="empty">No sets logged yet.</p> : <div className="exercise-groups">
             {groupByExercise(entries).map(([exerciseName, sets]) => <div className="exercise-group" key={exerciseName}>
               <b>{patternNames[sets[0].pattern]} <small>({exerciseName})</small></b>
-              <ul>{sets.map((entry) => <li key={entry.id}><span>{entry.reps} reps</span><button aria-label={`Delete ${entry.reps} rep set of ${exerciseName}`} onClick={() => void persist(logsRef.current.filter((item) => item.id !== entry.id))}>Delete</button></li>)}</ul>
+              <ul>{sets.map((entry) => <li key={entry.id}><span>{repLabel(entry.reps)}</span><button className="delete" aria-label={`Delete ${repLabel(entry.reps)} of ${exerciseName}`} onClick={() => void persist(logsRef.current.filter((item) => item.id !== entry.id))}>×</button></li>)}</ul>
             </div>)}
           </div>}
           {day !== date && dayNotes[day] && <p className="saved-day-note">{dayNotes[day]}</p>}
