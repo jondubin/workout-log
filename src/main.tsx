@@ -4,12 +4,13 @@ import { completeLogin, isConfigured, isLoggedIn, logout, startLogin } from "./d
 import { loadWorkoutLog, saveWorkoutLog, type Pattern, type SetLog } from "./log-store";
 import "./style.css";
 
-type Exercise = { name: string; pattern: Pattern };
+type Exercise = { name: string; short: string; pattern: Pattern };
 const exercises: Exercise[] = [
-  { name: "Push-up", pattern: "push" }, { name: "Diamond push-up", pattern: "push" }, { name: "Deficit push-up", pattern: "push" }, { name: "Incline push-up", pattern: "push" }, { name: "Ring push-up", pattern: "push" }, { name: "Weighted push-up", pattern: "push" },
-  { name: "Pull-up", pattern: "pull" }, { name: "Chin-up", pattern: "pull" }, { name: "Wide pull-up", pattern: "pull" }, { name: "Ring row", pattern: "pull" }, { name: "Inverted row", pattern: "pull" },
-  { name: "Split squat", pattern: "legs" }, { name: "Bulgarian split squat", pattern: "legs" }, { name: "Squat", pattern: "legs" }, { name: "Walking lunge", pattern: "legs" }, { name: "Weighted split squat", pattern: "legs" },
+  { name: "Push-up", short: "Push-up", pattern: "push" }, { name: "Diamond push-up", short: "Diamond", pattern: "push" }, { name: "Deficit push-up", short: "Deficit", pattern: "push" }, { name: "Incline push-up", short: "Incline", pattern: "push" }, { name: "Ring push-up", short: "Ring", pattern: "push" }, { name: "Weighted push-up", short: "Weighted", pattern: "push" },
+  { name: "Pull-up", short: "Pull-up", pattern: "pull" }, { name: "Chin-up", short: "Chin-up", pattern: "pull" }, { name: "Wide pull-up", short: "Wide", pattern: "pull" }, { name: "Ring row", short: "Ring row", pattern: "pull" }, { name: "Inverted row", short: "Inverted row", pattern: "pull" },
+  { name: "Split squat", short: "Split squat", pattern: "legs" }, { name: "Bulgarian split squat", short: "Bulgarian", pattern: "legs" }, { name: "Squat", short: "Squat", pattern: "legs" }, { name: "Walking lunge", short: "Lunge", pattern: "legs" }, { name: "Weighted split squat", short: "Weighted split", pattern: "legs" },
 ];
+const patterns: Pattern[] = ["push", "pull", "legs"];
 const patternNames: Record<Pattern, string> = { push: "Push", pull: "Pull", legs: "Legs" };
 const localDate = () => { const now = new Date(); return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 const shiftDate = (value: string, days: number) => { const date = new Date(`${value}T12:00:00`); date.setDate(date.getDate() + days); return date.toISOString().slice(0, 10); };
@@ -58,9 +59,19 @@ function App() {
   const isCurrentDay = date === localDate();
   const start = weekStart(date);
   const end = shiftDate(start, 6);
-  const totals = useMemo(() => logs.filter((entry) => entry.date >= start && entry.date <= new Date(new Date(`${start}T12:00:00`).getTime() + 6 * 86400000).toISOString().slice(0, 10)).reduce<Record<Pattern, number>>((sum, entry) => { sum[entry.pattern] += 1; return sum; }, { push: 0, pull: 0, legs: 0 }), [logs, start]);
+  const totals = useMemo(() => logs.filter((entry) => entry.date >= start && entry.date <= end).reduce<Record<Pattern, number>>((sum, entry) => { sum[entry.pattern] += 1; return sum; }, { push: 0, pull: 0, legs: 0 }), [logs, start, end]);
   const history = useMemo(() => Object.entries(logs.filter((entry) => entry.date <= date).reduce<Record<string, SetLog[]>>((groups, entry) => { (groups[entry.date] ??= []).push(entry); return groups; }, { [date]: [] })).sort(([a], [b]) => b.localeCompare(a)).slice(0, 14), [logs, date]);
   const groupByExercise = (entries: SetLog[]) => Object.entries(entries.reduce<Record<string, SetLog[]>>((groups, entry) => { (groups[entry.exercise] ??= []).push(entry); return groups; }, {}));
+  // Most recent exercise per pattern, so tapping a pattern tab lands on what you actually train.
+  const lastByPattern = useMemo(() => logs.reduce<Partial<Record<Pattern, string>>>((map, entry) => { map[entry.pattern] = entry.exercise; return map; }, {}), [logs]);
+  const repSuggestions = useMemo(() => {
+    const values: string[] = [];
+    for (let index = logs.length - 1; index >= 0 && values.length < 6; index -= 1) {
+      if (logs[index].exercise === exercise && !values.includes(logs[index].reps)) values.push(logs[index].reps);
+    }
+    return values;
+  }, [logs, exercise]);
+
   const persist = (nextSets: SetLog[], nextDayNotes = dayNotesRef.current) => {
     logsRef.current = nextSets; dayNotesRef.current = nextDayNotes;
     setLogs(nextSets); setDayNotes(nextDayNotes); setStatus("Saving…");
@@ -70,7 +81,18 @@ function App() {
     });
     return saveQueue.current;
   };
-  const addSet = () => { if (!reps.trim()) return; if (noteTimer.current) window.clearTimeout(noteTimer.current); void persist([...logsRef.current, { id: crypto.randomUUID(), date, exercise: selected.name, pattern: selected.pattern, reps: reps.trim() }]); setReps(""); };
+  const logSet = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    if (noteTimer.current) window.clearTimeout(noteTimer.current);
+    void persist([...logsRef.current, { id: crypto.randomUUID(), date, exercise: selected.name, pattern: selected.pattern, reps: trimmed }]);
+    setReps("");
+  };
+  const stepReps = (amount: number) => setReps((current) => {
+    const base = Number(current || repSuggestions[0] || "10");
+    return String(Math.max(1, (Number.isFinite(base) ? base : 10) + amount));
+  });
+  const selectPattern = (pattern: Pattern) => setExercise(lastByPattern[pattern] ?? exercises.find((item) => item.pattern === pattern)!.name);
   const updateDayNote = (note: string) => {
     const next = { ...dayNotesRef.current, [date]: note };
     dayNotesRef.current = next; setDayNotes(next); setStatus("Saving soon…");
@@ -78,14 +100,71 @@ function App() {
     noteTimer.current = window.setTimeout(() => { noteTimer.current = undefined; void persist(logsRef.current, dayNotesRef.current); }, 1500);
   };
 
-  if (!isConfigured() || !isLoggedIn()) return <main className="auth"><h1>Exercise log</h1><p>{status}</p><button onClick={() => void startLogin()} disabled={!isConfigured()}>Connect Dropbox</button>{!isConfigured() && <p className="help">Add `VITE_DROPBOX_CLIENT_ID` to `.env.local` first.</p>}</main>;
+  if (!isConfigured() || !isLoggedIn()) return <main className="auth"><h1>Exercise log</h1><p>{status}</p><button className="primary" onClick={() => void startLogin()} disabled={!isConfigured()}>Connect Dropbox</button>{!isConfigured() && <p className="help">Add `VITE_DROPBOX_CLIENT_ID` to `.env.local` first.</p>}</main>;
   if (!ready) return <main className="auth"><h1>Exercise log</h1><p>Loading your log…</p></main>;
   return <main>
-    <header><h1>Exercise log</h1><div className="header-right"><div className="header-actions"><button className="theme-toggle" onClick={() => setDark((value) => !value)}>{dark ? "Light" : "Dark"}</button><button className="link-button" onClick={() => { logout(); window.location.reload(); }}>Disconnect</button></div><div className="date-controls"><span>Date</span><button aria-label="Previous day" onClick={() => setDate((value) => shiftDate(value, -1))}>←</button><input aria-label="Date" type="date" value={date} max={localDate()} onChange={(event) => setDate(event.target.value)} />{!isCurrentDay && <button aria-label="Next day" onClick={() => setDate((value) => shiftDate(value, 1))}>→</button>}</div></div></header>
-    <section className="week"><h2>This week <small>{formatShortDate(start)}–{formatShortDate(end)}</small></h2><div>{(["push", "pull", "legs"] as Pattern[]).map((pattern) => <p key={pattern}><strong>{totals[pattern]}</strong> {patternNames[pattern]} set{totals[pattern] === 1 ? "" : "s"}</p>)}</div><p className="weekly-guide">Orientation: aim for roughly 10–20 hard sets per pattern each week, building up gradually.</p></section>
-    <section className="add"><h2>Add a set</h2><div className="form"><label>Exercise<select value={exercise} onChange={(event) => setExercise(event.target.value)}>{(["push", "pull", "legs"] as Pattern[]).map((pattern) => <optgroup key={pattern} label={patternNames[pattern]}>{exercises.filter((item) => item.pattern === pattern).map((item) => <option key={item.name}>{item.name}</option>)}</optgroup>)}</select></label><label className="reps">Reps<input inputMode="numeric" value={reps} placeholder="Reps" onChange={(event) => setReps(event.target.value)} /></label><button className="add-button" onClick={addSet}>Add to today</button></div><label className="day-notes">Notes for this day<textarea value={dayNotes[date] ?? ""} placeholder="How did it feel? Anything to remember?" onChange={(event) => updateDayNote(event.target.value)} /></label></section>
-    <section className="history"><h2>Exercise history</h2>{history.map(([day, entries]) => <div className={`history-day${day === date ? " current-day" : ""}`} key={day}><strong>{day === date ? <><span>Today</span><span>{formatDate(day)}</span></> : formatDate(day)}</strong><div>{entries.length === 0 ? <p className="empty">No sets logged yet.</p> : <div className="exercise-groups">{groupByExercise(entries).map(([exerciseName, sets]) => <div className="exercise-group" key={exerciseName}><b>{patternNames[sets[0].pattern]} <small>({exerciseName})</small></b><ul>{sets.map((entry) => <li key={entry.id}>{entry.reps} reps<button onClick={() => void persist(logsRef.current.filter((item) => item.id !== entry.id))}>Delete</button></li>)}</ul></div>)}</div>}{day !== date && dayNotes[day] && <p className="saved-day-note">{dayNotes[day]}</p>}</div></div>)}</section>
-    {status && <footer>{status}</footer>}
+    <header>
+      <div className="title-row">
+        <h1>Exercise log</h1>
+        <div className="header-actions">
+          <button className="icon-button" aria-label={dark ? "Switch to light theme" : "Switch to dark theme"} onClick={() => setDark((value) => !value)}>{dark ? "☀" : "☾"}</button>
+          <details className="menu">
+            <summary aria-label="More options">⋯</summary>
+            <div><button onClick={() => { logout(); window.location.reload(); }}>Disconnect Dropbox</button></div>
+          </details>
+        </div>
+      </div>
+      <div className="date-row">
+        <button aria-label="Previous day" onClick={() => setDate((value) => shiftDate(value, -1))}>←</button>
+        <input aria-label="Date" type="date" value={date} max={localDate()} onChange={(event) => setDate(event.target.value)} />
+        <button aria-label="Next day" disabled={isCurrentDay} onClick={() => setDate((value) => shiftDate(value, 1))}>→</button>
+      </div>
+    </header>
+
+    <section className="week">
+      <h2>This week <small>{formatShortDate(start)}–{formatShortDate(end)}</small></h2>
+      <div>{patterns.map((pattern) => <p key={pattern}><strong>{totals[pattern]}</strong> {patternNames[pattern]} set{totals[pattern] === 1 ? "" : "s"}</p>)}</div>
+      <p className="weekly-guide">Orientation: aim for roughly 10–20 hard sets per pattern each week, building up gradually.</p>
+    </section>
+
+    <section className="add">
+      <div className="tabs" role="group" aria-label="Movement pattern">
+        {patterns.map((pattern) => <button key={pattern} className={pattern === selected.pattern ? "active" : ""} aria-pressed={pattern === selected.pattern} onClick={() => selectPattern(pattern)}>{patternNames[pattern]}</button>)}
+      </div>
+      <div className="chips" role="group" aria-label="Exercise">
+        {exercises.filter((item) => item.pattern === selected.pattern).map((item) => <button key={item.name} className={item.name === selected.name ? "active" : ""} aria-pressed={item.name === selected.name} onClick={() => setExercise(item.name)}>{item.short}</button>)}
+      </div>
+      <div className="reps-row">
+        <button aria-label="One less rep" onClick={() => stepReps(-1)}>−</button>
+        <input aria-label="Reps" inputMode="numeric" value={reps} placeholder={repSuggestions[0] ?? "reps"} onChange={(event) => setReps(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") logSet(reps); }} />
+        <button aria-label="One more rep" onClick={() => stepReps(1)}>+</button>
+        <button className="primary" onClick={() => logSet(reps || repSuggestions[0] || "")}>Log {isCurrentDay ? "today" : formatShortDate(date)}</button>
+      </div>
+      {repSuggestions.length > 0 && <div className="quick-reps" role="group" aria-label="Log a recent rep count">
+        {repSuggestions.map((value) => <button key={value} onClick={() => logSet(value)}>{value}</button>)}
+      </div>}
+      <details className="day-notes" open={Boolean(dayNotes[date])}>
+        <summary>Notes for this day</summary>
+        <textarea aria-label="Notes for this day" value={dayNotes[date] ?? ""} placeholder="How did it feel? Anything to remember?" onChange={(event) => updateDayNote(event.target.value)} />
+      </details>
+    </section>
+
+    <section className="history">
+      <h2>Exercise history</h2>
+      {history.map(([day, entries]) => <div className={`history-day${day === date ? " current-day" : ""}`} key={day}>
+        <strong>{day === date ? <><span>Today</span><span>{formatDate(day)}</span></> : formatDate(day)}</strong>
+        <div>
+          {entries.length === 0 ? <p className="empty">No sets logged yet.</p> : <div className="exercise-groups">
+            {groupByExercise(entries).map(([exerciseName, sets]) => <div className="exercise-group" key={exerciseName}>
+              <b>{patternNames[sets[0].pattern]} <small>({exerciseName})</small></b>
+              <ul>{sets.map((entry) => <li key={entry.id}><span>{entry.reps} reps</span><button aria-label={`Delete ${entry.reps} rep set of ${exerciseName}`} onClick={() => void persist(logsRef.current.filter((item) => item.id !== entry.id))}>Delete</button></li>)}</ul>
+            </div>)}
+          </div>}
+          {day !== date && dayNotes[day] && <p className="saved-day-note">{dayNotes[day]}</p>}
+        </div>
+      </div>)}
+    </section>
+    {status && <div className="toast" role="status">{status}</div>}
   </main>;
 }
 
