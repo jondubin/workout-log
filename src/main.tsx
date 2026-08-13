@@ -31,16 +31,19 @@ function App() {
   const [logs, setLogs] = useState<SetLog[]>([]);
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [dayNotes, setDayNotes] = useState<Record<string, string>>({});
+  const [miscNotes, setMiscNotes] = useState<Record<string, string>>({});
   const [weeklyTargets, setWeeklyTargets] = useState<WeeklyTargets>(defaultWeeklyTargets);
   const [exercise, setExercise] = useState(exercises[0].name);
   const [reps, setReps] = useState("0");
   const [activity, setActivity] = useState("");
+  const [miscDraft, setMiscDraft] = useState("");
   const [dark, setDark] = useState(() => localStorage.getItem("workout-log:theme") !== "light");
   const [status, setStatus] = useState("Loading Dropbox…");
   const [ready, setReady] = useState(false);
   const logsRef = useRef<SetLog[]>([]);
   const activitiesRef = useRef<ActivityLog[]>([]);
   const dayNotesRef = useRef<Record<string, string>>({});
+  const miscNotesRef = useRef<Record<string, string>>({});
   const weeklyTargetsRef = useRef<WeeklyTargets>(defaultWeeklyTargets);
   const noteTimer = useRef<number | undefined>(undefined);
   const saveQueue = useRef(Promise.resolve());
@@ -49,6 +52,8 @@ function App() {
   useEffect(() => { logsRef.current = logs; }, [logs]);
   useEffect(() => { activitiesRef.current = activities; }, [activities]);
   useEffect(() => { dayNotesRef.current = dayNotes; }, [dayNotes]);
+  useEffect(() => { miscNotesRef.current = miscNotes; }, [miscNotes]);
+  useEffect(() => { setMiscDraft(miscNotes[date] ?? ""); }, [date, miscNotes]);
   useEffect(() => { weeklyTargetsRef.current = weeklyTargets; }, [weeklyTargets]);
   useEffect(() => () => { if (noteTimer.current) window.clearTimeout(noteTimer.current); }, []);
   useEffect(() => {
@@ -58,7 +63,7 @@ function App() {
         if (!isConfigured()) { setStatus("Dropbox app key is not configured."); return; }
         if (!isLoggedIn()) { setStatus("Connect Dropbox to start your log."); return; }
         const saved = await loadWorkoutLog();
-        setLogs(saved.sets); setActivities(saved.activities); setDayNotes(saved.dayNotes); setWeeklyTargets(saved.weeklyTargets);
+        setLogs(saved.sets); setActivities(saved.activities); setDayNotes(saved.dayNotes); setMiscNotes(saved.miscNotes); setWeeklyTargets(saved.weeklyTargets);
         const lastExercise = saved.sets.at(-1)?.exercise;
         if (lastExercise && exercises.some((item) => item.name === lastExercise)) setExercise(lastExercise);
         setStatus("");
@@ -74,8 +79,7 @@ function App() {
   const end = shiftDate(start, 6);
   const daysLeft = Math.max(1, Math.round((new Date(`${end}T12:00:00`).getTime() - new Date(`${date}T12:00:00`).getTime()) / 86400000) + 1);
   const totals = useMemo(() => logs.filter((entry) => entry.date >= start && entry.date <= end).reduce<Record<Pattern, number>>((sum, entry) => { sum[entry.pattern] += 1; return sum; }, { push: 0, pull: 0, legs: 0 }), [logs, start, end]);
-  const history = useMemo(() => Object.entries(logs.filter((entry) => entry.date <= date).reduce<Record<string, SetLog[]>>((groups, entry) => { (groups[entry.date] ??= []).push(entry); return groups; }, { [date]: [] })).sort(([a], [b]) => b.localeCompare(a)).slice(0, 14), [logs, date]);
-  const activitiesForDay = activities.filter((entry) => entry.date === date);
+  const historyDays = useMemo(() => [...new Set([date, ...logs.filter((entry) => entry.date <= date).map((entry) => entry.date), ...activities.filter((entry) => entry.date <= date).map((entry) => entry.date)])].sort((a, b) => b.localeCompare(a)).slice(0, 14), [logs, activities, date]);
   const groupByExercise = (entries: SetLog[]) => Object.entries(entries.reduce<Record<string, SetLog[]>>((groups, entry) => { (groups[entry.exercise] ??= []).push(entry); return groups; }, {}));
   // Most recent exercise per pattern, so tapping a pattern tab lands on what you actually train.
   const lastByPattern = useMemo(() => logs.reduce<Partial<Record<Pattern, string>>>((map, entry) => { map[entry.pattern] = entry.exercise; return map; }, {}), [logs]);
@@ -85,11 +89,11 @@ function App() {
     return lastUsed ? [...matching.filter((item) => item.name === lastUsed), ...matching.filter((item) => item.name !== lastUsed)] : matching;
   };
 
-  const persist = (nextSets: SetLog[], nextDayNotes = dayNotesRef.current, nextWeeklyTargets = weeklyTargetsRef.current, nextActivities = activitiesRef.current) => {
-    logsRef.current = nextSets; activitiesRef.current = nextActivities; dayNotesRef.current = nextDayNotes; weeklyTargetsRef.current = nextWeeklyTargets;
-    setLogs(nextSets); setActivities(nextActivities); setDayNotes(nextDayNotes); setWeeklyTargets(nextWeeklyTargets); setStatus("Saving…");
+  const persist = (nextSets: SetLog[], nextDayNotes = dayNotesRef.current, nextWeeklyTargets = weeklyTargetsRef.current, nextActivities = activitiesRef.current, nextMiscNotes = miscNotesRef.current) => {
+    logsRef.current = nextSets; activitiesRef.current = nextActivities; dayNotesRef.current = nextDayNotes; miscNotesRef.current = nextMiscNotes; weeklyTargetsRef.current = nextWeeklyTargets;
+    setLogs(nextSets); setActivities(nextActivities); setDayNotes(nextDayNotes); setMiscNotes(nextMiscNotes); setWeeklyTargets(nextWeeklyTargets); setStatus("Saving…");
     saveQueue.current = saveQueue.current.catch(() => undefined).then(async () => {
-      try { await saveWorkoutLog({ sets: nextSets, activities: nextActivities, dayNotes: nextDayNotes, weeklyTargets: nextWeeklyTargets }); setStatus(""); }
+      try { await saveWorkoutLog({ sets: nextSets, activities: nextActivities, dayNotes: nextDayNotes, miscNotes: nextMiscNotes, weeklyTargets: nextWeeklyTargets }); setStatus(""); }
       catch (error) { setStatus(saveError(error)); }
     });
     return saveQueue.current;
@@ -130,6 +134,12 @@ function App() {
     dayNotesRef.current = next; setDayNotes(next); setStatus("Saving soon…");
     if (noteTimer.current) window.clearTimeout(noteTimer.current);
     noteTimer.current = window.setTimeout(() => { noteTimer.current = undefined; void persist(logsRef.current, dayNotesRef.current); }, 1500);
+  };
+  const saveMiscNote = () => {
+    const next = { ...miscNotesRef.current };
+    if (miscDraft) next[date] = miscDraft;
+    else delete next[date];
+    void persist(logsRef.current, dayNotesRef.current, weeklyTargetsRef.current, activitiesRef.current, next);
   };
 
   if (!isConfigured() || !isLoggedIn()) return <main className="auth"><h1>Exercise log</h1><p>{status}</p><button className="primary" onClick={() => void startLogin()} disabled={!isConfigured()}>Connect Dropbox</button>{!isConfigured() && <p className="help">Add `VITE_DROPBOX_CLIENT_ID` to `.env.local` first.</p>}</main>;
@@ -187,19 +197,23 @@ function App() {
         <button className="primary" disabled={!Number(reps)} onClick={logSet}>Log</button>
       </div>
       <div className="day-notes">
-        <h3>Notes</h3>
-        <textarea aria-label="Notes" value={dayNotes[date] ?? ""} placeholder="How did the strength work feel? Anything to remember?" onChange={(event) => updateDayNote(event.target.value)} />
+        <h3>Strength notes</h3>
+        <textarea aria-label="Strength notes" value={dayNotes[date] ?? ""} placeholder="How did the strength work feel? Anything to remember?" onChange={(event) => updateDayNote(event.target.value)} />
       </div>
       <div className="other-activity">
-        <h3>Other activity</h3>
-        <div className="activity-entry"><input aria-label="Other activity" value={activity} placeholder="Jiu-jitsu, long walk, bike ride…" onChange={(event) => setActivity(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") logActivity(); }} /><button className="primary" disabled={!activity.trim()} onClick={logActivity}>Add</button></div>
-        {activitiesForDay.length > 0 && <ul>{activitiesForDay.map((entry) => <li key={entry.id}><span>{entry.name}</span><button className="delete" aria-label={`Delete ${entry.name}`} onClick={() => deleteActivity(entry.id)}>×</button></li>)}</ul>}
+        <h3>Activity log</h3>
+        <div className="activity-entry"><input aria-label="Activity log" value={activity} onChange={(event) => setActivity(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") logActivity(); }} /><button className="primary" disabled={!activity.trim()} onClick={logActivity}>Log</button></div>
+      </div>
+      <div className="misc-notes">
+        <h3>Misc</h3>
+        <textarea aria-label="Misc" value={miscDraft} onChange={(event) => setMiscDraft(event.target.value)} />
+        <div className="misc-actions"><button className="action-button" disabled={miscDraft === (miscNotes[date] ?? "")} onClick={saveMiscNote}>Save</button></div>
       </div>
     </section>
 
     <section className="history">
       <h2>Exercise history</h2>
-      {history.map(([day, entries]) => <div className={`history-day${day === date ? " current-day" : ""}`} key={day}>
+      {historyDays.map((day) => { const entries = logs.filter((entry) => entry.date === day); const dayActivities = activities.filter((entry) => entry.date === day); return <div className={`history-day${day === date ? " current-day" : ""}`} key={day}>
         <strong>{day === date ? <><span>Today</span><span>{formatDate(day)}</span></> : formatDate(day)}</strong>
         <div>
           {entries.length === 0 ? <p className="empty">No sets logged yet.</p> : <div className="pattern-columns">
@@ -213,9 +227,14 @@ function App() {
               {!entries.some((entry) => entry.pattern === pattern) && <p className="empty-pattern">—</p>}
             </div>)}
           </div>}
+          {dayActivities.length > 0 && <div className="history-activities">
+            <b>Activity log</b>
+            <ul className={dayActivities.length > 1 ? "multiple" : ""}>{dayActivities.map((entry) => <li key={entry.id}><span>{entry.name}</span>{day === date && <button className="delete" aria-label={`Delete ${entry.name}`} onClick={() => deleteActivity(entry.id)}>×</button>}</li>)}</ul>
+          </div>}
+          {miscNotes[day] && <div className="history-misc"><b>Misc</b><p>{miscNotes[day]}</p></div>}
           {day !== date && dayNotes[day] && <p className="saved-day-note">{dayNotes[day]}</p>}
         </div>
-      </div>)}
+      </div>})}
     </section>
     {status && <div className="toast" role="status">{status}</div>}
   </main>;
