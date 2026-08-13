@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { completeLogin, isConfigured, isLoggedIn, logout, startLogin } from "./dropbox-auth";
-import { defaultWeeklyTargets, loadWorkoutLog, saveWorkoutLog, type Pattern, type SetLog, type WeeklyTargets } from "./log-store";
+import { defaultWeeklyTargets, loadWorkoutLog, saveWorkoutLog, type ActivityLog, type Pattern, type SetLog, type WeeklyTargets } from "./log-store";
 import "./style.css";
 
 type Exercise = { name: string; short: string; pattern: Pattern };
@@ -29,14 +29,17 @@ const saveError = (error: unknown) => {
 function App() {
   const [date, setDate] = useState(localDate());
   const [logs, setLogs] = useState<SetLog[]>([]);
+  const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [dayNotes, setDayNotes] = useState<Record<string, string>>({});
   const [weeklyTargets, setWeeklyTargets] = useState<WeeklyTargets>(defaultWeeklyTargets);
   const [exercise, setExercise] = useState(exercises[0].name);
   const [reps, setReps] = useState("0");
+  const [activity, setActivity] = useState("");
   const [dark, setDark] = useState(() => localStorage.getItem("workout-log:theme") !== "light");
   const [status, setStatus] = useState("Loading Dropbox…");
   const [ready, setReady] = useState(false);
   const logsRef = useRef<SetLog[]>([]);
+  const activitiesRef = useRef<ActivityLog[]>([]);
   const dayNotesRef = useRef<Record<string, string>>({});
   const weeklyTargetsRef = useRef<WeeklyTargets>(defaultWeeklyTargets);
   const noteTimer = useRef<number | undefined>(undefined);
@@ -44,6 +47,7 @@ function App() {
 
   useEffect(() => { document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("workout-log:theme", dark ? "dark" : "light"); }, [dark]);
   useEffect(() => { logsRef.current = logs; }, [logs]);
+  useEffect(() => { activitiesRef.current = activities; }, [activities]);
   useEffect(() => { dayNotesRef.current = dayNotes; }, [dayNotes]);
   useEffect(() => { weeklyTargetsRef.current = weeklyTargets; }, [weeklyTargets]);
   useEffect(() => () => { if (noteTimer.current) window.clearTimeout(noteTimer.current); }, []);
@@ -54,7 +58,7 @@ function App() {
         if (!isConfigured()) { setStatus("Dropbox app key is not configured."); return; }
         if (!isLoggedIn()) { setStatus("Connect Dropbox to start your log."); return; }
         const saved = await loadWorkoutLog();
-        setLogs(saved.sets); setDayNotes(saved.dayNotes); setWeeklyTargets(saved.weeklyTargets);
+        setLogs(saved.sets); setActivities(saved.activities); setDayNotes(saved.dayNotes); setWeeklyTargets(saved.weeklyTargets);
         const lastExercise = saved.sets.at(-1)?.exercise;
         if (lastExercise && exercises.some((item) => item.name === lastExercise)) setExercise(lastExercise);
         setStatus("");
@@ -71,6 +75,7 @@ function App() {
   const daysLeft = Math.max(1, Math.round((new Date(`${end}T12:00:00`).getTime() - new Date(`${date}T12:00:00`).getTime()) / 86400000) + 1);
   const totals = useMemo(() => logs.filter((entry) => entry.date >= start && entry.date <= end).reduce<Record<Pattern, number>>((sum, entry) => { sum[entry.pattern] += 1; return sum; }, { push: 0, pull: 0, legs: 0 }), [logs, start, end]);
   const history = useMemo(() => Object.entries(logs.filter((entry) => entry.date <= date).reduce<Record<string, SetLog[]>>((groups, entry) => { (groups[entry.date] ??= []).push(entry); return groups; }, { [date]: [] })).sort(([a], [b]) => b.localeCompare(a)).slice(0, 14), [logs, date]);
+  const activitiesForDay = activities.filter((entry) => entry.date === date);
   const groupByExercise = (entries: SetLog[]) => Object.entries(entries.reduce<Record<string, SetLog[]>>((groups, entry) => { (groups[entry.exercise] ??= []).push(entry); return groups; }, {}));
   // Most recent exercise per pattern, so tapping a pattern tab lands on what you actually train.
   const lastByPattern = useMemo(() => logs.reduce<Partial<Record<Pattern, string>>>((map, entry) => { map[entry.pattern] = entry.exercise; return map; }, {}), [logs]);
@@ -80,11 +85,11 @@ function App() {
     return lastUsed ? [...matching.filter((item) => item.name === lastUsed), ...matching.filter((item) => item.name !== lastUsed)] : matching;
   };
 
-  const persist = (nextSets: SetLog[], nextDayNotes = dayNotesRef.current, nextWeeklyTargets = weeklyTargetsRef.current) => {
-    logsRef.current = nextSets; dayNotesRef.current = nextDayNotes; weeklyTargetsRef.current = nextWeeklyTargets;
-    setLogs(nextSets); setDayNotes(nextDayNotes); setWeeklyTargets(nextWeeklyTargets); setStatus("Saving…");
+  const persist = (nextSets: SetLog[], nextDayNotes = dayNotesRef.current, nextWeeklyTargets = weeklyTargetsRef.current, nextActivities = activitiesRef.current) => {
+    logsRef.current = nextSets; activitiesRef.current = nextActivities; dayNotesRef.current = nextDayNotes; weeklyTargetsRef.current = nextWeeklyTargets;
+    setLogs(nextSets); setActivities(nextActivities); setDayNotes(nextDayNotes); setWeeklyTargets(nextWeeklyTargets); setStatus("Saving…");
     saveQueue.current = saveQueue.current.catch(() => undefined).then(async () => {
-      try { await saveWorkoutLog({ sets: nextSets, dayNotes: nextDayNotes, weeklyTargets: nextWeeklyTargets }); setStatus(""); }
+      try { await saveWorkoutLog({ sets: nextSets, activities: nextActivities, dayNotes: nextDayNotes, weeklyTargets: nextWeeklyTargets }); setStatus(""); }
       catch (error) { setStatus(saveError(error)); }
     });
     return saveQueue.current;
@@ -95,6 +100,13 @@ function App() {
     void persist([...logsRef.current, { id: crypto.randomUUID(), date, exercise: selected.name, pattern: selected.pattern, reps }]);
     setReps("0");
   };
+  const logActivity = () => {
+    const name = activity.trim();
+    if (!name) return;
+    void persist(logsRef.current, dayNotesRef.current, weeklyTargetsRef.current, [...activitiesRef.current, { id: crypto.randomUUID(), date, name }]);
+    setActivity("");
+  };
+  const deleteActivity = (id: string) => void persist(logsRef.current, dayNotesRef.current, weeklyTargetsRef.current, activitiesRef.current.filter((entry) => entry.id !== id));
   const stepReps = (amount: number) => setReps((current) => String(Math.max(0, Number(current) + amount)));
   // Digits only, and no leading zeros, so typing into the default 0 gives "8" rather than "08".
   // Clearing the field is allowed while it has focus; blur restores 0.
@@ -174,10 +186,15 @@ function App() {
         </label>
         <button className="primary" disabled={!Number(reps)} onClick={logSet}>Log</button>
       </div>
-      <details className="day-notes" open={Boolean(dayNotes[date])}>
-        <summary>Notes for this day</summary>
-        <textarea aria-label="Notes for this day" value={dayNotes[date] ?? ""} placeholder="How did it feel? Anything to remember?" onChange={(event) => updateDayNote(event.target.value)} />
-      </details>
+      <div className="day-notes">
+        <h3>Notes</h3>
+        <textarea aria-label="Notes" value={dayNotes[date] ?? ""} placeholder="How did the strength work feel? Anything to remember?" onChange={(event) => updateDayNote(event.target.value)} />
+      </div>
+      <div className="other-activity">
+        <h3>Other activity</h3>
+        <div className="activity-entry"><input aria-label="Other activity" value={activity} placeholder="Jiu-jitsu, long walk, bike ride…" onChange={(event) => setActivity(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") logActivity(); }} /><button className="primary" disabled={!activity.trim()} onClick={logActivity}>Add</button></div>
+        {activitiesForDay.length > 0 && <ul>{activitiesForDay.map((entry) => <li key={entry.id}><span>{entry.name}</span><button className="delete" aria-label={`Delete ${entry.name}`} onClick={() => deleteActivity(entry.id)}>×</button></li>)}</ul>}
+      </div>
     </section>
 
     <section className="history">
@@ -185,11 +202,15 @@ function App() {
       {history.map(([day, entries]) => <div className={`history-day${day === date ? " current-day" : ""}`} key={day}>
         <strong>{day === date ? <><span>Today</span><span>{formatDate(day)}</span></> : formatDate(day)}</strong>
         <div>
-          {entries.length === 0 ? <p className="empty">No sets logged yet.</p> : <div className="exercise-groups">
-            {groupByExercise(entries).map(([exerciseName, sets]) => <div className="exercise-group" key={exerciseName}>
-              <b>{patternNames[sets[0].pattern]} <small>({exerciseName})</small></b>
-              {/* Delete is offered only on the selected day, so earlier days can't be edited by a stray tap. */}
-              <ul>{sets.map((entry) => <li key={entry.id}><span>{repLabel(entry.reps)}</span>{day === date && <button className="delete" aria-label={`Delete ${repLabel(entry.reps)} of ${exerciseName}`} onClick={() => void persist(logsRef.current.filter((item) => item.id !== entry.id))}>×</button>}</li>)}</ul>
+          {entries.length === 0 ? <p className="empty">No sets logged yet.</p> : <div className="pattern-columns">
+            {patterns.map((pattern) => <div className="pattern-column" key={pattern}>
+              <b>{patternNames[pattern]}</b>
+              {groupByExercise(entries.filter((entry) => entry.pattern === pattern)).map(([exerciseName, sets]) => <div className="exercise-group" key={exerciseName}>
+                <small>{exerciseName}</small>
+                {/* Delete is offered only on the selected day, so earlier days can't be edited by a stray tap. */}
+                <ul>{sets.map((entry) => <li key={entry.id}><span>{repLabel(entry.reps)}</span>{day === date && <button className="delete" aria-label={`Delete ${repLabel(entry.reps)} of ${exerciseName}`} onClick={() => void persist(logsRef.current.filter((item) => item.id !== entry.id))}>×</button>}</li>)}</ul>
+              </div>)}
+              {!entries.some((entry) => entry.pattern === pattern) && <p className="empty-pattern">—</p>}
             </div>)}
           </div>}
           {day !== date && dayNotes[day] && <p className="saved-day-note">{dayNotes[day]}</p>}

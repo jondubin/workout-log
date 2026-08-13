@@ -12,7 +12,7 @@ header{padding-bottom:16px;border-bottom:2px solid var(--ink)}
 .date-row{display:flex;align-items:center;gap:6px;margin-top:12px}
 .date-row button{width:40px;height:40px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font-size:17px;line-height:1}
 .date-row button:disabled{opacity:.35;cursor:default}
-h1,h2{margin:0;font-size:23px}h2{font-size:19px}
+h1,h2,h3{margin:0;font-size:23px}h2{font-size:19px}h3{font-size:15px}
 input,select,textarea{border:1px solid var(--line);padding:8px;background:var(--surface);color:var(--ink);outline-color:var(--ink)}
 .week,.add,.history{padding:22px 0;border-bottom:1px solid var(--line)}
 .week h2 small{font-size:13px;font-weight:400;color:var(--muted)}
@@ -41,19 +41,28 @@ input,select,textarea{border:1px solid var(--line);padding:8px;background:var(--
 .reps-row .primary{flex:1;height:44px;border-color:var(--ink);padding:0 14px;font-size:15px;white-space:nowrap}
 .reps-row .primary:disabled{border-color:var(--line);color:var(--muted);cursor:default}
 .day-notes{margin-top:20px;font-size:14px}
-.day-notes summary{color:var(--muted);cursor:pointer;padding:4px 0}
+.day-notes h3{margin-bottom:7px;color:var(--muted);font-weight:400}
 .day-notes textarea{display:block;width:100%;min-height:120px;margin-top:7px;resize:vertical}
+.other-activity{margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}
+.other-activity h3{margin-bottom:8px}
+.activity-entry{display:flex;gap:8px}.activity-entry input{min-width:0;flex:1}.activity-entry .primary{padding:8px 16px}.activity-entry .primary:disabled{border-color:var(--line);color:var(--muted);cursor:default}
+.other-activity ul{margin:10px 0 0;padding:0;list-style:none}.other-activity li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--line)}
+.other-activity .delete{border:0;background:transparent;color:var(--muted);font-size:17px;line-height:1;padding:6px 10px}
 
 .history h2{margin-bottom:13px}
 .history-day{display:grid;grid-template-columns:150px 1fr;gap:14px;padding:12px 0;border-top:1px solid var(--line);font-size:14px}
 .history-day.current-day{background:var(--selected);margin:0 -8px;padding:14px 8px;font-size:16px;border-top:2px solid var(--ink);border-bottom:2px solid var(--ink)}
 .history-day.current-day strong{display:grid;align-content:start;gap:2px;line-height:1.35}
 .history-day ul{margin:3px 0 0;padding:0;list-style:none}
-.exercise-group+.exercise-group{margin-top:10px}
-.exercise-group b{font-size:15px}.exercise-group b small{font-size:13px;font-weight:400;color:var(--muted)}
+.pattern-columns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.pattern-column b{font-size:15px}
+.exercise-group{margin-top:6px}
+.exercise-group small{display:block;overflow-wrap:anywhere;font-size:13px;color:var(--muted)}
+.empty-pattern{margin:6px 0 0;color:var(--muted)}
 .history-day li{display:flex;align-items:center;gap:4px}
 .history-day li span{font-variant-numeric:tabular-nums}
-.history-day li .delete{border:0;background:transparent;color:var(--muted);font-size:17px;line-height:1;padding:6px 10px}
+.history-day li .delete{border:0;background:transparent;color:var(--muted);font-size:17px;line-height:1;padding:6px 10px;transition:opacity .15s ease}
+@media(hover:hover){.history-day li .delete{opacity:0}.history-day li:hover .delete,.history-day li .delete:focus-visible{opacity:1}}
 .saved-day-note{margin:9px 0 0;color:var(--muted);white-space:pre-wrap}
 
 .primary{border:1px solid var(--ink);background:var(--surface);color:var(--ink);padding:10px 14px}
@@ -67,5 +76,6 @@ input,select,textarea{border:1px solid var(--line);padding:8px;background:var(--
   .week-stat p{font-size:14px}
   .reps-row .primary{padding:10px 8px}
   .history-day{grid-template-columns:1fr;gap:5px}
+  .pattern-columns{gap:8px}
   .history-day.current-day strong{display:flex;gap:8px}
 }
